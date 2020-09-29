@@ -24,6 +24,9 @@ func Route(authorization *gin.RouterGroup, api *gin.RouterGroup) {
 	authorization.PUT("/user", updateUser)
 	api.POST("/users", registration)
 	api.POST("/users/login", login)
+	api.GET("/profiles/:username", getProfiles)
+	authorization.POST("/profiles/:username/follow", follow)
+	authorization.DELETE("/profiles/:username/follow", unfollow)
 }
 
 type registrationForm struct {
@@ -165,6 +168,81 @@ func getUserByEmail(email *string) (User, bool) {
 	fmt.Println("user:", &user)
 	notFound := common.GetDB().Where(&User{Email: *email}).Find(&user).RecordNotFound()
 	return user, notFound
+}
+
+func getProfiles(c *gin.Context) {
+	userId, exists := c.Get("UserId")
+	username := c.Param("username")
+	if len(username) == 0 {
+		c.AbortWithStatus(422)
+		return
+	}
+	var user User
+	notFound := common.DB.Where("username = ?", username).First(&user).RecordNotFound()
+	if notFound {
+		c.AbortWithStatus(404)
+		return
+	}
+	isFollowed := false
+	if exists {
+		isFollowed = following(userId.(uint), user.ID)
+	}
+	c.JSON(200, map[string]interface{}{
+		"profile": map[string]interface{}{
+			"username":  user.Username,
+			"bio":       user.Bio,
+			"image":     user.Image,
+			"following": isFollowed,
+		},
+	})
+}
+
+func follow(c *gin.Context) {
+	userId, _ := c.Get("UserId")
+	username := c.Param("username")
+	if len(username) == 0 {
+		c.AbortWithStatus(422)
+		return
+	}
+	var user User
+	notFound := common.DB.Where("username = ?", username).First(&user).RecordNotFound()
+	if notFound {
+		c.AbortWithStatus(404)
+		return
+	}
+	isFollowed := saveFollow(userId.(uint), user.ID)
+	c.JSON(200, map[string]interface{}{
+		"profile": map[string]interface{}{
+			"username":  user.Username,
+			"bio":       user.Bio,
+			"image":     user.Image,
+			"following": isFollowed,
+		},
+	})
+}
+
+func unfollow(c *gin.Context) {
+	userId, _ := c.Get("UserId")
+	username := c.Param("username")
+	if len(username) == 0 {
+		c.AbortWithStatus(422)
+		return
+	}
+	var user User
+	notFound := common.DB.Where("username = ?", username).First(&user).RecordNotFound()
+	if notFound {
+		c.AbortWithStatus(404)
+		return
+	}
+	deleteFollow := deleteFollow(userId.(uint), user.ID)
+	c.JSON(200, map[string]interface{}{
+		"profile": map[string]interface{}{
+			"username":  user.Username,
+			"bio":       user.Bio,
+			"image":     user.Image,
+			"following": !deleteFollow,
+		},
+	})
 }
 
 func GenerateToken(user *User) (string, error) {
